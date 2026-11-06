@@ -1,0 +1,69 @@
+parameters:
+  - name: poolName
+    type: string
+    default: ''
+    displayName: Self-hosted agent pool name (leave blank for Microsoft-hosted)
+  - name: vmImage
+    type: string
+    default: ubuntu-latest
+    displayName: Microsoft-hosted VM image
+
+trigger:
+  branches:
+    include:
+      - '*'
+
+pr:
+  branches:
+    include:
+      - '*'
+
+pool:
+  ${{ if eq(parameters.poolName, '') }}:
+    vmImage: ${{ parameters.vmImage }}
+  ${{ else }}:
+    name: ${{ parameters.poolName }}
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.13'
+    displayName: Select Python
+
+  - script: python -m pip install --upgrade pip
+    displayName: Upgrade pip
+
+  - script: python -m pip install -r requirements.txt
+    displayName: Install pinned dependencies
+
+  - script: python -m playwright install --with-deps chromium
+    displayName: Install Chromium and system dependencies
+
+  - script: bash run_tests.sh
+    displayName: Run parallel tests and generate reports
+
+  - task: PublishTestResults@2
+    displayName: Publish JUnit test results
+    condition: always()
+    inputs:
+      testResultsFormat: JUnit
+      testResultsFiles: reports/junit.xml
+      searchFolder: $(System.DefaultWorkingDirectory)
+      failTaskOnFailedTests: true
+      testRunTitle: SauceDemo UI tests
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish HTML report
+    condition: always()
+    inputs:
+      targetPath: reports
+      artifact: test-reports
+      publishLocation: pipeline
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish failure artifacts
+    condition: always()
+    inputs:
+      targetPath: test-results
+      artifact: playwright-failures
+      publishLocation: pipeline
